@@ -16,8 +16,7 @@ TEST_CASE("test_drain", "[ringbuffer_sink]") {
 
         int counter = 0;
         sink->drain([&](std::string_view msg) {
-            REQUIRE(msg == spdlog::fmt_lib::format("*** {}{}", counter + 1,
-                                                   spdlog::details::os::default_eol));
+            REQUIRE(msg == spdlog::fmt_lib::format("*** {}{}", counter + 1, spdlog::details::os::default_eol));
             counter++;
         });
 
@@ -38,7 +37,7 @@ TEST_CASE("test_drain_raw", "[ringbuffer_sink]") {
         }
 
         int counter = 0;
-        sink->drain_raw([&](const spdlog::details::log_msg_buffer &buffer) {
+        sink->drain_raw([&](const spdlog::details::async_log_msg &buffer) {
             REQUIRE(buffer.payload.data() == std::to_string(counter + 1));
             counter++;
         });

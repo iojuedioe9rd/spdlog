@@ -14,7 +14,7 @@
 #include <condition_variable>
 #include <mutex>
 
-#include "circular_q.h"
+#include "./circular_q.h"
 
 namespace spdlog {
 namespace details {
@@ -37,7 +37,7 @@ public:
         push_cv_.notify_one();
     }
 
-    // enqueue immediately. overrun oldest message in the queue if no room left.
+    // enqueue immediately. overrun the oldest message in the queue if no room left.
     void enqueue_nowait(T &&item) {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
@@ -47,20 +47,15 @@ public:
     }
 
     void enqueue_if_have_room(T &&item) {
-        bool pushed = false;
         {
-            std::unique_lock<std::mutex> lock(queue_mutex_);
-            if (!q_.full()) {
-                q_.push_back(std::move(item));
-                pushed = true;
+            std::unique_lock lock(queue_mutex_);
+            if (q_.full()) {
+                ++discard_counter_;
+                return;
             }
+            q_.push_back(std::move(item));
         }
-
-        if (pushed) {
-            push_cv_.notify_one();
-        } else {
-            ++discard_counter_;
-        }
+        push_cv_.notify_one();
     }
 
     // dequeue with a timeout.
@@ -148,19 +143,19 @@ public:
 #endif
 
     size_t overrun_counter() {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(queue_mutex_);
         return q_.overrun_counter();
     }
 
     size_t discard_counter() { return discard_counter_.load(std::memory_order_relaxed); }
 
     size_t size() {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(queue_mutex_);
         return q_.size();
     }
 
     void reset_overrun_counter() {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
+        std::lock_guard<std::mutex> lock(queue_mutex_);
         q_.reset_overrun_counter();
     }
 

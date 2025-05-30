@@ -7,107 +7,83 @@
 #include "includes.h"
 #include "spdlog/sinks/basic_file_sink.h"
 
-#define SIMPLE_LOG "test_logs/simple_log.txt"
-#define SIMPLE_ASYNC_LOG "test_logs/simple_async_log.txt"
+static spdlog::filename_t log_filename = SPDLOG_FILENAME_T("test_logs/simple_log.txt");
+static std::string log_err_msg = "Error during log";
+static std::string flush_err_msg = "Error during flush";
 
-class failing_sink : public spdlog::sinks::base_sink<std::mutex> {
+class failing_sink final : public spdlog::sinks::base_sink<std::mutex> {
 protected:
-    void sink_it_(const spdlog::details::log_msg &) final {
-        throw std::runtime_error("some error happened during log");
-    }
-
-    void flush_() final { throw std::runtime_error("some error happened during flush"); }
+    void sink_it_(const spdlog::details::log_msg &) override { throw std::runtime_error(log_err_msg.c_str()); }
+    void flush_() override { throw std::runtime_error(flush_err_msg.c_str()); }
 };
 struct custom_ex {};
 
-#if !defined(SPDLOG_USE_STD_FORMAT)  // std formt doesn't fully support runtime format strings
+using namespace spdlog::sinks;
 TEST_CASE("default_error_handler", "[errors]") {
     prepare_logdir();
-    spdlog::filename_t filename = SPDLOG_FILENAME_T(SIMPLE_LOG);
-
-    auto logger = spdlog::create<spdlog::sinks::basic_file_sink_mt>("test-error", filename, true);
+    auto logger = spdlog::create<basic_file_sink_mt>("test-bad-format", log_filename);
     logger->set_pattern("%v");
     logger->info(SPDLOG_FMT_RUNTIME("Test message {} {}"), 1);
     logger->info("Test message {}", 2);
     logger->flush();
     using spdlog::details::os::default_eol;
-    REQUIRE(file_contents(SIMPLE_LOG) == spdlog::fmt_lib::format("Test message 2{}", default_eol));
-    REQUIRE(count_lines(SIMPLE_LOG) == 1);
+    REQUIRE(file_contents(log_filename) == spdlog::fmt_lib::format("Test message 2{}", default_eol));
+    REQUIRE(count_lines(log_filename) == 1);
 }
 
 TEST_CASE("custom_error_handler", "[errors]") {
     prepare_logdir();
-    spdlog::filename_t filename = SPDLOG_FILENAME_T(SIMPLE_LOG);
-    auto logger = spdlog::create<spdlog::sinks::basic_file_sink_mt>("logger", filename, true);
+    auto logger = spdlog::create<basic_file_sink_mt>("test-format-error", log_filename);
     logger->flush_on(spdlog::level::info);
-    logger->set_error_handler([=](const std::string &) { throw custom_ex(); });
+    logger->set_error_handler([=](const std::string &msg) { REQUIRE(msg == "argument not found"); });
     logger->info("Good message #1");
-
-    REQUIRE_THROWS_AS(logger->info(SPDLOG_FMT_RUNTIME("Bad format msg {} {}"), "xxx"), custom_ex);
+    REQUIRE_NOTHROW(logger->info(SPDLOG_FMT_RUNTIME("Bad format msg {} {}"), "xxx"));
     logger->info("Good message #2");
-    require_message_count(SIMPLE_LOG, 2);
-}
-#endif
-
-TEST_CASE("default_error_handler2", "[errors]") {
-    spdlog::drop_all();
-    auto logger = spdlog::create<failing_sink>("failed_logger");
-    logger->set_error_handler([=](const std::string &) { throw custom_ex(); });
-    REQUIRE_THROWS_AS(logger->info("Some message"), custom_ex);
+    require_message_count(log_filename, 2);
 }
 
-TEST_CASE("flush_error_handler", "[errors]") {
-    spdlog::drop_all();
-    auto logger = spdlog::create<failing_sink>("failed_logger");
-    logger->set_error_handler([=](const std::string &) { throw custom_ex(); });
-    REQUIRE_THROWS_AS(logger->flush(), custom_ex);
+TEST_CASE("throwing_sink", "[errors]") {
+    auto logger = std::make_shared<spdlog::logger>("test-throwing-sink", std::make_shared<failing_sink>());
+    REQUIRE_NOTHROW(logger->info("Some message"));
 }
 
-#if !defined(SPDLOG_USE_STD_FORMAT)  // std formt doesn't fully support runtime format strings
-TEST_CASE("async_error_handler", "[errors]") {
-    prepare_logdir();
-    std::string err_msg("log failed with some msg");
-
-    spdlog::filename_t filename = SPDLOG_FILENAME_T(SIMPLE_ASYNC_LOG);
-    {
-        spdlog::init_thread_pool(128, 1);
-        auto logger =
-            spdlog::create_async<spdlog::sinks::basic_file_sink_mt>("logger", filename, true);
-        logger->set_error_handler([=](const std::string &) {
-            std::ofstream ofs("test_logs/custom_err.txt");
-            if (!ofs) {
-                throw std::runtime_error("Failed open test_logs/custom_err.txt");
-            }
-            ofs << err_msg;
-        });
-        logger->info("Good message #1");
-        logger->info(SPDLOG_FMT_RUNTIME("Bad format msg {} {}"), "xxx");
-        logger->info("Good message #2");
-        spdlog::drop("logger");  // force logger to drain the queue and shutdown
-    }
-    spdlog::init_thread_pool(128, 1);
-    require_message_count(SIMPLE_ASYNC_LOG, 2);
-    REQUIRE(file_contents("test_logs/custom_err.txt") == err_msg);
+TEST_CASE("throwing_flush", "[errors]") {
+    auto logger = spdlog::create<failing_sink>("test-throwing-sink");
+    REQUIRE_NOTHROW(logger->flush());
 }
-#endif
 
-// Make sure async error handler is executed
-TEST_CASE("async_error_handler2", "[errors]") {
-    prepare_logdir();
-    std::string err_msg("This is async handler error message");
-    {
-        spdlog::details::os::create_dir(SPDLOG_FILENAME_T("test_logs"));
-        spdlog::init_thread_pool(128, 1);
-        auto logger = spdlog::create_async<failing_sink>("failed_logger");
-        logger->set_error_handler([=](const std::string &) {
-            std::ofstream ofs("test_logs/custom_err2.txt");
-            if (!ofs) throw std::runtime_error("Failed open test_logs/custom_err2.txt");
-            ofs << err_msg;
-        });
-        logger->info("Hello failure");
-        spdlog::drop("failed_logger");  // force logger to drain the queue and shutdown
-    }
+TEST_CASE("throwing_error_handler", "[errors]") {
+    auto logger = std::make_shared<spdlog::logger>("test-throwing-error-handler", std::make_shared<failing_sink>());
+    logger->set_error_handler([=](const std::string &msg) {
+        REQUIRE(msg == log_err_msg);
+        throw std::runtime_error("test throw");
+    });
+    REQUIRE_NOTHROW(logger->info("Some message"));
+}
 
-    spdlog::init_thread_pool(128, 1);
-    REQUIRE(file_contents("test_logs/custom_err2.txt") == err_msg);
+TEST_CASE("throwing_flush_error_handler", "[errors]") {
+    auto logger = spdlog::create<failing_sink>("test-throwing-error-handler");
+    logger->set_error_handler([=](const std::string &msg) {
+        REQUIRE(msg == flush_err_msg);
+        throw std::runtime_error("test throw");
+    });
+    REQUIRE_NOTHROW(logger->flush());
+}
+
+TEST_CASE("unknown_ex_from_err_handler", "[errors]") {
+    auto logger = std::make_shared<spdlog::logger>("test-throwing-error-handler", std::make_shared<failing_sink>());
+    logger->set_error_handler([=](const std::string &msg) {
+        REQUIRE(msg == log_err_msg);
+        throw custom_ex();
+    });
+    REQUIRE_NOTHROW(logger->info("Some message"));
+}
+
+TEST_CASE("unknown_ex_from_flush_err_handler", "[errors]") {
+    auto logger = spdlog::create<failing_sink>("test-throwing-error-handler");
+    logger->set_error_handler([=](const std::string &msg) {
+        REQUIRE(msg == flush_err_msg);
+        throw custom_ex();
+    });
+    REQUIRE_NOTHROW(logger->flush());
 }

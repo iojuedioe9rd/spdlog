@@ -4,11 +4,11 @@
 #pragma once
 
 #include <cstdio>
+#include <mutex>
 
-#include "../details/synchronous_factory.h"
 #include "../details/null_mutex.h"
-#include "base_sink.h"
-#include "sink.h"
+#include "./base_sink.h"
+#include "./sink.h"
 
 #ifdef _WIN32
     #include "../details/windows_include.h"
@@ -36,17 +36,17 @@ private:
     void flush_() override;
 #ifdef _WIN32
     HANDLE handle_;
-#endif  // WIN32
+#endif  // _WIN32
 };
 
 template <typename Mutex>
-class stdout_sink : public stdout_sink_base<Mutex> {
+class stdout_sink final : public stdout_sink_base<Mutex> {
 public:
     stdout_sink();
 };
 
 template <typename Mutex>
-class stderr_sink : public stdout_sink_base<Mutex> {
+class stderr_sink final : public stdout_sink_base<Mutex> {
 public:
     stderr_sink();
 };
@@ -58,18 +58,4 @@ using stderr_sink_mt = stderr_sink<std::mutex>;
 using stderr_sink_st = stderr_sink<details::null_mutex>;
 
 }  // namespace sinks
-
-// factory methods
-template <typename Factory = spdlog::synchronous_factory>
-std::shared_ptr<logger> stdout_logger_mt(const std::string &logger_name);
-
-template <typename Factory = spdlog::synchronous_factory>
-std::shared_ptr<logger> stdout_logger_st(const std::string &logger_name);
-
-template <typename Factory = spdlog::synchronous_factory>
-std::shared_ptr<logger> stderr_logger_mt(const std::string &logger_name);
-
-template <typename Factory = spdlog::synchronous_factory>
-std::shared_ptr<logger> stderr_logger_st(const std::string &logger_name);
-
 }  // namespace spdlog

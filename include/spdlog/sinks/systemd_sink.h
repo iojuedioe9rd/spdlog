@@ -7,8 +7,7 @@
 
 #include "../details/null_mutex.h"
 #include "../details/os.h"
-#include "../details/synchronous_factory.h"
-#include "base_sink.h"
+#include "./base_sink.h"
 #ifndef SD_JOURNAL_SUPPRESS_LOCATION
     #define SD_JOURNAL_SUPPRESS_LOCATION
 #endif
@@ -67,25 +66,15 @@ protected:
         // Do not send source location if not available
         if (msg.source.empty()) {
             // Note: function call inside '()' to avoid macro expansion
-            err = (sd_journal_send)("MESSAGE=%.*s", static_cast<int>(length), payload.data(),
-                                    "PRIORITY=%d", syslog_level(msg.log_level),
-#ifndef SPDLOG_NO_THREAD_ID
-                                    "TID=%zu", msg.thread_id,
-#endif
-                                    "SYSLOG_IDENTIFIER=%.*s",
-                                    static_cast<int>(syslog_identifier.size()),
-                                    syslog_identifier.data(), nullptr);
+            err = (sd_journal_send)("MESSAGE=%.*s", static_cast<int>(length), payload.data(), "PRIORITY=%d",
+                                    syslog_level(msg.log_level), "TID=%zu", msg.thread_id, "SYSLOG_IDENTIFIER=%.*s",
+                                    static_cast<int>(syslog_identifier.size()), syslog_identifier.data(), nullptr);
         } else {
-            err = (sd_journal_send)("MESSAGE=%.*s", static_cast<int>(length), payload.data(),
-                                    "PRIORITY=%d", syslog_level(msg.log_level),
-#ifndef SPDLOG_NO_THREAD_ID
-                                    "TID=%zu", msg.thread_id,
-#endif
-                                    "SYSLOG_IDENTIFIER=%.*s",
-                                    static_cast<int>(syslog_identifier.size()),
-                                    syslog_identifier.data(), "CODE_FILE=%s", msg.source.filename,
-                                    "CODE_LINE=%d", msg.source.line, "CODE_FUNC=%s",
-                                    msg.source.funcname, nullptr);
+            err = (sd_journal_send)("MESSAGE=%.*s", static_cast<int>(length), payload.data(), "PRIORITY=%d",
+                                    syslog_level(msg.log_level), "TID=%zu", msg.thread_id, "SYSLOG_IDENTIFIER=%.*s",
+                                    static_cast<int>(syslog_identifier.size()), syslog_identifier.data(), "CODE_FILE=%s",
+                                    msg.source.filename, "CODE_LINE=%d", msg.source.line, "CODE_FUNC=%s", msg.source.funcname,
+                                    nullptr);
         }
 
         if (err) {
@@ -100,20 +89,6 @@ protected:
 
 using systemd_sink_mt = systemd_sink<std::mutex>;
 using systemd_sink_st = systemd_sink<details::null_mutex>;
+
 }  // namespace sinks
-
-// Create and register a syslog logger
-template <typename Factory = spdlog::synchronous_factory>
-inline std::shared_ptr<logger> systemd_logger_mt(const std::string &logger_name,
-                                                 const std::string &ident = "",
-                                                 bool enable_formatting = false) {
-    return Factory::template create<sinks::systemd_sink_mt>(logger_name, ident, enable_formatting);
-}
-
-template <typename Factory = spdlog::synchronous_factory>
-inline std::shared_ptr<logger> systemd_logger_st(const std::string &logger_name,
-                                                 const std::string &ident = "",
-                                                 bool enable_formatting = false) {
-    return Factory::template create<sinks::systemd_sink_st>(logger_name, ident, enable_formatting);
-}
 }  // namespace spdlog

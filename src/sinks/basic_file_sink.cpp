@@ -3,15 +3,15 @@
 
 #include "spdlog/sinks/basic_file_sink.h"
 
+#include <mutex>
+
 #include "spdlog/common.h"
 
 namespace spdlog {
 namespace sinks {
 
 template <typename Mutex>
-basic_file_sink<Mutex>::basic_file_sink(const filename_t &filename,
-                                        bool truncate,
-                                        const file_event_handlers &event_handlers)
+basic_file_sink<Mutex>::basic_file_sink(const filename_t &filename, bool truncate, const file_event_handlers &event_handlers)
     : file_helper_{event_handlers} {
     file_helper_.open(filename, truncate);
 }
@@ -37,5 +37,6 @@ void basic_file_sink<Mutex>::flush_() {
 }  // namespace spdlog
 
 // template instantiations
+#include "spdlog/details/null_mutex.h"
 template class SPDLOG_API spdlog::sinks::basic_file_sink<std::mutex>;
 template class SPDLOG_API spdlog::sinks::basic_file_sink<spdlog::details::null_mutex>;

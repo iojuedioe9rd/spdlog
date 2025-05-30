@@ -3,7 +3,6 @@
  * https://raw.githubusercontent.com/gabime/spdlog/v2.x/LICENSE
  */
 #include "includes.h"
-#include "spdlog/async.h"
 #include "spdlog/common.h"
 #include "spdlog/sinks/callback_sink.h"
 #include "test_sink.h"
@@ -11,13 +10,12 @@
 TEST_CASE("custom_callback_logger", "[custom_callback_logger]") {
     std::vector<std::string> lines;
     spdlog::pattern_formatter formatter;
-    auto callback_logger =
-        std::make_shared<spdlog::sinks::callback_sink_st>([&](const spdlog::details::log_msg &msg) {
-            spdlog::memory_buf_t formatted;
-            formatter.format(msg, formatted);
-            auto eol_len = strlen(spdlog::details::os::default_eol);
-            lines.emplace_back(formatted.begin(), formatted.end() - eol_len);
-        });
+    auto callback_logger = std::make_shared<spdlog::sinks::callback_sink_st>([&](const spdlog::details::log_msg &msg) {
+        spdlog::memory_buf_t formatted;
+        formatter.format(msg, formatted);
+        auto eol_len = strlen(spdlog::details::os::default_eol);
+        lines.emplace_back(formatted.begin(), formatted.end() - eol_len);
+    });
     std::shared_ptr<spdlog::sinks::test_sink_st> test_sink(new spdlog::sinks::test_sink_st);
 
     spdlog::logger logger("test-callback", {callback_logger, test_sink});
@@ -31,5 +29,4 @@ TEST_CASE("custom_callback_logger", "[custom_callback_logger]") {
     REQUIRE(lines[0] == ref_lines[0]);
     REQUIRE(lines[1] == ref_lines[1]);
     REQUIRE(lines[2] == ref_lines[2]);
-    spdlog::drop_all();
 }

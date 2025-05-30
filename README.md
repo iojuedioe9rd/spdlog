@@ -1,12 +1,18 @@
 # spdlog
 
-Very fast, header-only/compiled, C++ logging library. [![ci](https://github.com/gabime/spdlog/actions/workflows/ci.yml/badge.svg)](https://github.com/gabime/spdlog/actions/workflows/ci.yml)&nbsp; [![Build status](https://ci.appveyor.com/api/projects/status/d2jnxclg20vd0o50?svg=true&branch=v2.x)](https://ci.appveyor.com/project/gabime/spdlog) [![Release](https://img.shields.io/github/release/gabime/spdlog.svg)](https://github.com/gabime/spdlog/releases/latest)
+
+[![ci](https://github.com/gabime/spdlog/actions/workflows/linux.yml/badge.svg)](https://github.com/gabime/spdlog/actions/workflows/linux.yml)&nbsp;
+[![ci](https://github.com/gabime/spdlog/actions/workflows/windows.yml/badge.svg)](https://github.com/gabime/spdlog/actions/workflows/windows.yml)&nbsp;
+[![ci](https://github.com/gabime/spdlog/actions/workflows/macos.yml/badge.svg)](https://github.com/gabime/spdlog/actions/workflows/macos.yml)&nbsp;
+[![Release](https://img.shields.io/github/release/gabime/spdlog.svg)](https://github.com/gabime/spdlog/releases/latest)
+
+Fast C++ logging library
 
 ## Install
 ```console
 $ git clone https://github.com/gabime/spdlog.git
 $ cd spdlog && mkdir build && cd build
-$ cmake .. && make -j
+$ cmake .. && cmake --build .
 ```
 
 see example [CMakeLists.txt](https://github.com/gabime/spdlog/blob/v2.x/example/CMakeLists.txt) on how to use.
@@ -27,7 +33,7 @@ see example [CMakeLists.txt](https://github.com/gabime/spdlog/blob/v2.x/example/
 * Arch Linux: `pacman -S spdlog`
 * openSUSE: `sudo zypper in spdlog-devel`
 * vcpkg: `vcpkg install spdlog`
-* conan: `spdlog/[>=1.4.1]`
+* conan: `conan install --requires=spdlog/[*]`
 * conda: `conda install -c conda-forge spdlog`
 * build2: ```depends: spdlog ^1.8.2```
 
@@ -50,7 +56,6 @@ see example [CMakeLists.txt](https://github.com/gabime/spdlog/blob/v2.x/example/
   * Easily [extendable](https://github.com/gabime/spdlog/wiki/4.-Sinks#implementing-your-own-sink) with custom log targets.
 * Log filtering - log levels can be modified at runtime as well as compile time.
 * Support for loading log levels from argv or environment var.
-* [Backtrace](#backtrace-support) support - store debug messages in a ring buffer and display them later on demand.
 
 ## Usage samples
 
@@ -138,23 +143,6 @@ void daily_example()
 
 ```
 
----
-#### Backtrace support
-```c++
-// Debug messages can be stored in a ring buffer instead of being logged immediately.
-// This is useful to display debug logs only when needed (e.g. when an error happens).
-// When needed, call dump_backtrace() to dump them to your log.
-
-spdlog::enable_backtrace(32); // Store the latest 32 messages in a buffer. 
-// or my_logger->enable_backtrace(32)..
-for(int i = 0; i < 100; i++)
-{
-  spdlog::debug("Backtrace message {}", i); // not logged yet..
-}
-// e.g. if some error happened:
-spdlog::dump_backtrace(); // log them now! show the last 32 messages
-// or my_logger->dump_backtrace(32)..
-```
 
 ---
 #### Periodic flush
@@ -257,32 +245,11 @@ void callback_example()
 #include "spdlog/sinks/basic_file_sink.h"
 void async_example()
 {
-    // default thread pool settings can be modified *before* creating the async logger:
-    // spdlog::init_thread_pool(8192, 1); // queue with 8k items and 1 backing thread.
-    auto async_file = spdlog::basic_logger_mt<spdlog::async_factory>("async_file_logger", "logs/async_log.txt");
-    // alternatively:
-    // auto async_file = spdlog::create_async<spdlog::sinks::basic_file_sink_mt>("async_file_logger", "logs/async_log.txt");   
+    // TODO       
 }
 
 ```
 
----
-#### Asynchronous logger with multi sinks
-```c++
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/sinks/rotating_file_sink.h"
-
-void multi_sink_example2()
-{
-    spdlog::init_thread_pool(8192, 1);
-    auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt >();
-    auto rotating_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("mylog.txt", 1024*1024*10, 3);
-    std::vector<spdlog::sink_ptr> sinks {stdout_sink, rotating_sink};
-    auto logger = std::make_shared<spdlog::async_logger>("loggername", sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::block);
-    spdlog::register_logger(logger);
-}
-```
- 
 ---
 #### User-defined types
 ```c++
@@ -409,10 +376,10 @@ void file_events_example()
 ---
 #### Replace the Default Logger
 ```c++
-void replace_default_logger_example()
+void replace_global_logger_example()
 {
-    auto new_logger = spdlog::basic_logger_mt("new_default_logger", "logs/new-default-log.txt", true);
-    spdlog::set_default_logger(new_logger);
+    auto new_logger = spdlog::basic_logger_mt("new_global_logger", "logs/new-default-log.txt", true);
+    spdlog::set_global_logger(new_logger);
     spdlog::info("new logger log message");
 }
 ```
@@ -493,5 +460,3 @@ Documentation can be found in the [wiki](https://github.com/gabime/spdlog/wiki/1
 ---
 
 Thanks to [JetBrains](https://www.jetbrains.com/?from=spdlog) for donating product licenses to help develop **spdlog** <a href="https://www.jetbrains.com/?from=spdlog"><img src="logos/jetbrains-variant-4.svg" width="94" align="center" /></a>
-
-

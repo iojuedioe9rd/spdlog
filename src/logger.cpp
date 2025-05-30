@@ -3,34 +3,31 @@
 
 #include "spdlog/logger.h"
 
-#include <cstdio>
-#include <mutex>
-
 #include "spdlog/pattern_formatter.h"
 #include "spdlog/sinks/sink.h"
 
 namespace spdlog {
 
 // public methods
-logger::logger(const logger &other) noexcept
+logger::logger(const logger &other)
     : name_(other.name_),
       sinks_(other.sinks_),
       level_(other.level_.load(std::memory_order_relaxed)),
       flush_level_(other.flush_level_.load(std::memory_order_relaxed)),
-      custom_err_handler_(other.custom_err_handler_) {}
+      err_helper_(other.err_helper_) {}
 
 logger::logger(logger &&other) noexcept
     : name_(std::move(other.name_)),
       sinks_(std::move(other.sinks_)),
       level_(other.level_.load(std::memory_order_relaxed)),
       flush_level_(other.flush_level_.load(std::memory_order_relaxed)),
-      custom_err_handler_(std::move(other.custom_err_handler_)) {}
+      err_helper_(std::move(other.err_helper_)) {}
 
 void logger::set_level(level level) { level_.store(level); }
 
-level logger::log_level() const { return level_.load(std::memory_order_relaxed); }
+level logger::log_level() const noexcept { return level_.load(std::memory_order_relaxed); }
 
-const std::string &logger::name() const { return name_; }
+const std::string &logger::name() const noexcept { return name_; }
 
 // set formatting for the sinks in this logger.
 // each sink will get a separate instance of the formatter object.
@@ -40,9 +37,8 @@ void logger::set_formatter(std::unique_ptr<formatter> f) {
             // last element - we can move it.
             (*it)->set_formatter(std::move(f));
             break;  // to prevent clang-tidy warning
-        } else {
-            (*it)->set_formatter(f->clone());
         }
+        (*it)->set_formatter(f->clone());
     }
 }
 
@@ -52,19 +48,19 @@ void logger::set_pattern(std::string pattern, pattern_time_type time_type) {
 }
 
 // flush functions
-void logger::flush() { flush_(); }
+void logger::flush() noexcept { flush_(); }
 
-void logger::flush_on(level level) { flush_level_.store(level); }
+void logger::flush_on(level level) noexcept { flush_level_.store(level); }
 
-level logger::flush_level() const { return flush_level_.load(std::memory_order_relaxed); }
+level logger::flush_level() const noexcept { return flush_level_.load(std::memory_order_relaxed); }
 
 // sinks
-const std::vector<sink_ptr> &logger::sinks() const { return sinks_; }
+const std::vector<sink_ptr> &logger::sinks() const noexcept { return sinks_; }
 
-std::vector<sink_ptr> &logger::sinks() { return sinks_; }
+std::vector<sink_ptr> &logger::sinks() noexcept { return sinks_; }
 
-// error handler
-void logger::set_error_handler(err_handler handler) { custom_err_handler_ = std::move(handler); }
+// custom error handler
+void logger::set_error_handler(err_handler handler) { err_helper_.set_err_handler(std::move(handler)); }
 
 // create new logger with same sinks and configuration.
 std::shared_ptr<logger> logger::clone(std::string logger_name) {
@@ -73,43 +69,16 @@ std::shared_ptr<logger> logger::clone(std::string logger_name) {
     return cloned;
 }
 
-void logger::flush_() {
+// private/protected methods
+void logger::flush_() noexcept {
     for (auto &sink : sinks_) {
-        SPDLOG_TRY { sink->flush(); }
-        SPDLOG_LOGGER_CATCH(source_loc())
-    }
-}
-
-bool logger::should_flush_(const details::log_msg &msg) {
-    auto flush_level = flush_level_.load(std::memory_order_relaxed);
-    return (msg.log_level >= flush_level) && (msg.log_level != level::off);
-}
-
-void logger::err_handler_(const std::string &msg) {
-    if (custom_err_handler_) {
-        custom_err_handler_(msg);
-    } else {
-        using std::chrono::system_clock;
-        static std::mutex mutex;
-        static std::chrono::system_clock::time_point last_report_time;
-        static size_t err_counter = 0;
-        std::lock_guard<std::mutex> lk{mutex};
-        auto now = system_clock::now();
-        err_counter++;
-        if (now - last_report_time < std::chrono::seconds(1)) {
-            return;
+        try {
+            sink->flush();
+        } catch (const std::exception &ex) {
+            err_helper_.handle_ex(name_, source_loc{}, ex);
+        } catch (...) {
+            err_helper_.handle_unknown_ex(name_, source_loc{});
         }
-        last_report_time = now;
-        auto tm_time = details::os::localtime(system_clock::to_time_t(now));
-        char date_buf[64];
-        std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d %H:%M:%S", &tm_time);
-#if defined(USING_R) && defined(R_R_H)  // if in R environment
-        REprintf("[*** LOG ERROR #%04zu ***] [%s] [%s] %s\n", err_counter, date_buf, name().c_str(),
-                 msg.c_str());
-#else
-        std::fprintf(stderr, "[*** LOG ERROR #%04zu ***] [%s] [%s] %s\n", err_counter, date_buf,
-                     name().c_str(), msg.c_str());
-#endif
     }
 }
 }  // namespace spdlog

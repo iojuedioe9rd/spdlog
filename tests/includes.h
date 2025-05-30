@@ -25,9 +25,13 @@
 
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
 
-#include "spdlog/async.h"
 #include "spdlog/details/fmt_helper.h"
 #include "spdlog/pattern_formatter.h"
 #include "spdlog/sinks/null_sink.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
+
+// to_string_view
+[[nodiscard]] constexpr spdlog::string_view_t to_string_view(const spdlog::memory_buf_t &buf) noexcept {
+    return spdlog::string_view_t{buf.data(), buf.size()};
+}

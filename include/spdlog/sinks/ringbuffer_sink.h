@@ -5,11 +5,10 @@
 
 #include <functional>
 #include <mutex>
-#include <string>
-#include <vector>
+#include <string_view>
 
+#include "../details/async_log_msg.h"
 #include "../details/circular_q.h"
-#include "../details/log_msg_buffer.h"
 #include "../details/null_mutex.h"
 #include "base_sink.h"
 
@@ -27,7 +26,7 @@ public:
     explicit ringbuffer_sink(size_t n_items)
         : q_{n_items} {}
 
-    void drain_raw(std::function<void(const details::log_msg_buffer &)> callback) {
+    void drain_raw(std::function<void(const details::async_log_msg &)> callback) {
         std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
         while (!q_.empty()) {
             callback(q_.front());
@@ -48,12 +47,12 @@ public:
 
 protected:
     void sink_it_(const details::log_msg &msg) override {
-        q_.push_back(details::log_msg_buffer{msg});
+        q_.push_back(details::async_log_msg{details::async_log_msg::type::log, msg});
     }
     void flush_() override {}
 
 private:
-    details::circular_q<details::log_msg_buffer> q_;
+    details::circular_q<details::async_log_msg> q_;
 };
 
 using ringbuffer_sink_mt = ringbuffer_sink<std::mutex>;

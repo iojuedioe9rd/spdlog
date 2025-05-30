@@ -15,9 +15,8 @@
 
     #include "../details/fmt_helper.h"
     #include "../details/null_mutex.h"
-    #include "../details/synchronous_factory.h"
-    #include "base_sink.h"
-    #include "os.h"
+    #include "../details/os.h"
+    #include "./base_sink.h"
 
     #if !defined(SPDLOG_ANDROID_RETRIES)
         #define SPDLOG_ANDROID_RETRIES 2
@@ -75,14 +74,16 @@ private:
     // __android_log_buf_write, if user explicitly provides a non-default log buffer. Otherwise,
     // when using the default log buffer, always log via __android_log_write.
     template <int ID = BufferID>
-    typename std::enable_if<ID == static_cast<int>(log_id::LOG_ID_MAIN), int>::type android_log(
-        int prio, const char *tag, const char *text) {
+    typename std::enable_if<ID == static_cast<int>(log_id::LOG_ID_MAIN), int>::type android_log(int prio,
+                                                                                                const char *tag,
+                                                                                                const char *text) {
         return __android_log_write(prio, tag, text);
     }
 
     template <int ID = BufferID>
-    typename std::enable_if<ID != static_cast<int>(log_id::LOG_ID_MAIN), int>::type android_log(
-        int prio, const char *tag, const char *text) {
+    typename std::enable_if<ID != static_cast<int>(log_id::LOG_ID_MAIN), int>::type android_log(int prio,
+                                                                                                const char *tag,
+                                                                                                const char *text) {
         return __android_log_buf_write(ID, prio, tag, text);
     }
 
@@ -118,21 +119,6 @@ template <int BufferId = log_id::LOG_ID_MAIN>
 using android_sink_buf_st = android_sink<details::null_mutex, BufferId>;
 
 }  // namespace sinks
-
-// Create and register android syslog logger
-
-template <typename Factory = spdlog::synchronous_factory>
-inline std::shared_ptr<logger> android_logger_mt(const std::string &logger_name,
-                                                 const std::string &tag = "spdlog") {
-    return Factory::template create<sinks::android_sink_mt>(logger_name, tag);
-}
-
-template <typename Factory = spdlog::synchronous_factory>
-inline std::shared_ptr<logger> android_logger_st(const std::string &logger_name,
-                                                 const std::string &tag = "spdlog") {
-    return Factory::template create<sinks::android_sink_st>(logger_name, tag);
-}
-
 }  // namespace spdlog
 
 #endif  // __ANDROID__

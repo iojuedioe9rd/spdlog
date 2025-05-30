@@ -5,13 +5,13 @@
 
 #include <cerrno>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <tuple>
 
 #include "spdlog/common.h"
 #include "spdlog/details/file_helper.h"
 #include "spdlog/details/os.h"
-#include "spdlog/fmt/fmt.h"
 
 namespace spdlog {
 namespace sinks {
@@ -45,19 +45,27 @@ rotating_file_sink<Mutex>::rotating_file_sink(filename_t base_filename,
 // e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.3.txt".
 template <typename Mutex>
 filename_t rotating_file_sink<Mutex>::calc_filename(const filename_t &filename, std::size_t index) {
-    if (index == 0u) {
+    if (index == 0U) {
         return filename;
     }
 
-    filename_t basename, ext;
-    std::tie(basename, ext) = details::file_helper::split_by_extension(filename);
-    return fmt_lib::format(SPDLOG_FILENAME_T("{}.{}{}"), basename, index, ext);
+    filename_t basename;
+    filename_t ext;
+    std::tie(basename, ext) = details::os::split_by_extension(filename);
+    std::basic_ostringstream<filename_t::value_type> oss;
+    oss << basename.native() << '.' << index << ext.native();
+    return oss.str();
 }
 
 template <typename Mutex>
 filename_t rotating_file_sink<Mutex>::filename() {
     std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
     return file_helper_.filename();
+}
+
+template <typename Mutex>
+void rotating_file_sink<Mutex>::rotate_now() {
+    rotate_();
 }
 
 template <typename Mutex>
@@ -113,8 +121,7 @@ void rotating_file_sink<Mutex>::rotate_() {
                 file_helper_.reopen(true);  // truncate the log file anyway to prevent it
                                             // to grow beyond its limit!
                 current_size_ = 0;
-                throw_spdlog_ex("rotating_file_sink: failed renaming " + filename_to_str(src) +
-                                    " to " + filename_to_str(target),
+                throw_spdlog_ex("rotating_file_sink: failed renaming " + filename_to_str(src) + " to " + filename_to_str(target),
                                 errno);
             }
         }
@@ -125,16 +132,14 @@ void rotating_file_sink<Mutex>::rotate_() {
 // delete the target if exists, and rename the src file  to target
 // return true on success, false otherwise.
 template <typename Mutex>
-bool rotating_file_sink<Mutex>::rename_file_(const filename_t &src_filename,
-                                             const filename_t &target_filename) {
-    // try to delete the target file in case it already exists.
-    (void)details::os::remove(target_filename);
-    return details::os::rename(src_filename, target_filename) == 0;
+bool rotating_file_sink<Mutex>::rename_file_(const filename_t &src_filename, const filename_t &target_filename) noexcept {
+    return details::os::rename(src_filename, target_filename);
 }
 
 }  // namespace sinks
 }  // namespace spdlog
 
 // template instantiations
+#include "spdlog/details/null_mutex.h"
 template class SPDLOG_API spdlog::sinks::rotating_file_sink<std::mutex>;
 template class SPDLOG_API spdlog::sinks::rotating_file_sink<spdlog::details::null_mutex>;
